@@ -10,7 +10,7 @@ const commandDir = join(config, "commands")
 
 await mkdir(pluginDir, { recursive: true })
 await mkdir(commandDir, { recursive: true })
-await copyFile(join(root, "src", "index.js"), join(pluginDir, "bybrawe-loop.js"))
+await copyFile(join(root, "src", "index.js"), join(pluginDir, "opencode-loop.js"))
 
 for (const name of await readdir(join(root, "commands"))) {
   if (name.endsWith(".md")) {
@@ -18,4 +18,5 @@ for (const name of await readdir(join(root, "commands"))) {
   }
 }
 
-console.log(`Installed Bybrawe OpenCode Loop plugin to ${config}`)
+console.log(`Installed OpenCode Loop plugin to ${config}`)
+console.log("Restart OpenCode, then run: /loop-help")

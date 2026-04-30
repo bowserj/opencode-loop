@@ -1,7 +1,7 @@
 {
-  "name": "@bybrawe/opencode-loop",
-  "version": "0.2.0",
-  "description": "A Claude Code style loop plugin for OpenCode with interval/idle loops, compact schedules, safety flags, checkpoints, presets, watch mode and lifecycle controls.",
+  "name": "opencode-loop-like-claude",
+  "version": "0.3.0",
+  "description": "Claude Code style /loop command for OpenCode: auto-continue, compact scheduling, progress.md TODO automation, verification commands, checkpoints and safe autonomous coding loops.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -24,17 +24,20 @@
   "keywords": [
     "opencode",
     "opencode-plugin",
+    "claude-code",
+    "claude-code-loop",
     "loop",
-    "ralph",
-    "automation",
-    "bybrawe",
+    "auto-continue",
+    "autonomous-coding",
+    "ai-coding-agent",
     "compact",
     "checkpoint",
     "scheduler",
     "progress-md",
-    "todo"
+    "todo-automation",
+    "ralph-loop"
   ],
-  "author": "Bybrawe",
+  "author": "OpenCode Loop Contributors",
   "license": "MIT",
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.4.0"

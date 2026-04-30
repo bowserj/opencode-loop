@@ -1,4 +1,4 @@
-name: release-zip
+name: Release ZIP
 
 on:
   push:
@@ -6,13 +6,12 @@ on:
       - "v*"
 
 jobs:
-  zip:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create zip
-        run: zip -r bybrawe-opencode-loop.zip . -x "*.git*"
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+      - name: Create ZIP
+        run: zip -r opencode-loop-like-claude.zip . -x "*.git*"
+      - uses: softprops/action-gh-release@v2
         with:
-          files: bybrawe-opencode-loop.zip
+          files: opencode-loop-like-claude.zip

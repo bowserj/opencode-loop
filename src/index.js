@@ -2,8 +2,8 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import { spawn } from "node:child_process"
 
-const SERVICE = "bybrawe-opencode-loop"
-const STATE_DIR = ".opencode/bybrawe-loop"
+const SERVICE = "opencode-loop"
+const STATE_DIR = ".opencode/opencode-loop"
 const DEFAULT_ACTIVE_GUARD_MS = 60_000
 const MAX_WALK_FILES = 200
 const MAX_WALK_BYTES = 2_000_000
@@ -144,7 +144,11 @@ function parseLoopArgs(raw, defaults = {}) {
   let name = defaults.name
   let until = defaults.until
   let testCommand = defaults.testCommand
+  let verifyCommand = defaults.verifyCommand
+  let preflightCommand = defaults.preflightCommand
   let branch = defaults.branch
+  let stopFile = defaults.stopFile
+  let progressFile = defaults.progressFile
   let batch = defaults.batch ?? 0
   let compactEveryRuns = defaults.compactEveryRuns ?? 0
   let compactEveryMs = defaults.compactEveryMs ?? 0
@@ -201,6 +205,18 @@ function parseLoopArgs(raw, defaults = {}) {
   ;[value, rest] = takeFlagValue(rest, "--test")
   if (value !== undefined) testCommand = stripOuterQuotes(value)
 
+  ;[value, rest] = takeFlagValue(rest, "--verify")
+  if (value !== undefined) verifyCommand = stripOuterQuotes(value)
+
+  ;[value, rest] = takeFlagValue(rest, "--preflight")
+  if (value !== undefined) preflightCommand = stripOuterQuotes(value)
+
+  ;[value, rest] = takeFlagValue(rest, "--stop-file")
+  if (value !== undefined) stopFile = stripOuterQuotes(value)
+
+  ;[value, rest] = takeFlagValue(rest, "--progress-file")
+  if (value !== undefined) progressFile = stripOuterQuotes(value)
+
   ;[value, rest] = takeFlagValue(rest, "--branch")
   if (value !== undefined) branch = stripOuterQuotes(value)
 
@@ -242,6 +258,10 @@ function parseLoopArgs(raw, defaults = {}) {
       askNever,
       batch,
       testCommand,
+      verifyCommand,
+      preflightCommand,
+      stopFile,
+      progressFile,
       gitCheckpoint,
       checkpointOnly,
       branch,
@@ -375,6 +395,14 @@ function isLoopClear(name) {
   return name === "loop-clear"
 }
 
+function isLoopHelp(name) {
+  return name === "loop-help"
+}
+
+function isLoopLogs(name) {
+  return name === "loop-logs"
+}
+
 function isPreset(name) {
   return ["loop-dev", "loop-testfix", "loop-compact", "loop-progress", "loop-safe-dev"].includes(name)
 }
@@ -440,10 +468,13 @@ function jobLabel(job) {
   const title = job.name ? `${job.name}: ` : ""
   const limit = job.maxRuns > 0 ? `, max ${job.maxRuns}` : ""
   const timeout = job.timeoutMs > 0 ? `, timeout ${durationToText(job.timeoutMs)}` : ""
+  const verify = job.verifyCommand ? ", verify" : ""
+  const preflight = job.preflightCommand ? ", preflight" : ""
+  const stopFile = job.stopFile ? ", stop-file" : ""
   const compact = job.compactEveryRuns > 0 ? `, compact every ${job.compactEveryRuns} runs` : job.compactEveryMs > 0 ? `, compact every ${durationToText(job.compactEveryMs)}` : ""
   const watch = job.watchPaths?.length ? `, watch ${job.watchPaths.join(",")}` : ""
   const paused = job.paused ? ", paused" : ""
-  return `${title}${durationToText(job.intervalMs)} -> ${job.action}${limit}${timeout}${compact}${watch}${paused}`
+  return `${title}${durationToText(job.intervalMs)} -> ${job.action}${limit}${timeout}${compact}${verify}${preflight}${stopFile}${watch}${paused}`
 }
 
 function matchJob(job, target, index) {
@@ -470,6 +501,7 @@ async function addLoop(directory, client, sessionID, args, defaults = {}) {
 
   await toast(client, `Loop added: ${jobLabel(parsed.job)}`, "success")
   await log(client, "info", "Loop added", { sessionID, job: parsed.job })
+  await appendLoopLog(directory, "add", { sessionID, job: parsed.job.name || parsed.job.id, label: jobLabel(parsed.job) })
 }
 
 async function stopLoop(directory, client, sessionID, args) {
@@ -531,9 +563,39 @@ async function statusLoop(directory, client, sessionID) {
       path: { id: sessionID },
       body: {
         noReply: true,
-        parts: [{ type: "text", text: `Bybrawe loop status:\n${message}` }],
+        parts: [{ type: "text", text: `OpenCode loop status:\n${message}` }],
       },
     })
+  } catch {}
+}
+
+async function helpLoop(client, sessionID) {
+  const text = [
+    "OpenCode Loop help:",
+    "/loop 0s <prompt>                         Claude Code style auto-continue on every idle",
+    "/loop 5m --ask-never --safe <prompt>       interval loop for autonomous development",
+    "/loop 200m --no-now /compact               compact/summarize loop",
+    "/loop 10m !npm test                        shell command loop",
+    "/loop 0s --verify \"npm test\" <prompt>      run verification after each turn",
+    "/loop 0s --preflight \"npm install\" <prompt> run a command before each turn",
+    "/loop 0s --stop-file STOP_LOOP <prompt>     stop when a file appears",
+    "/loop 0s --progress-file progress.md <prompt>",
+    "/loop-status | /loop-now | /loop-pause | /loop-resume | /loop-stop | /loop-logs",
+  ].join("\n")
+  try {
+    await client.session.prompt({ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text }] } })
+  } catch {}
+}
+
+async function logsLoop(directory, client, sessionID) {
+  let text = "No loop log found."
+  try {
+    const file = path.join(stateDir(directory), "loop.log")
+    const data = await fs.readFile(file, "utf8")
+    text = data.trim().split(/\r?\n/).slice(-60).join("\n") || text
+  } catch {}
+  try {
+    await client.session.prompt({ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text: "OpenCode loop logs:\n" + text }] } })
   } catch {}
 }
 
@@ -602,6 +664,16 @@ async function handleCommand(directory, client, input, fallbackName, fallbackArg
     await stopLoop(directory, client, sessionID, "all")
     return true
   }
+  if (isLoopHelp(name)) {
+    markHandled(sessionID, name, args)
+    await helpLoop(client, sessionID)
+    return true
+  }
+  if (isLoopLogs(name)) {
+    markHandled(sessionID, name, args)
+    await logsLoop(directory, client, sessionID)
+    return true
+  }
   return false
 }
 
@@ -632,6 +704,14 @@ function dangerousShell(command) {
 function decoratePrompt(job) {
   const additions = []
 
+  if (job.progressFile) {
+    additions.push("Use " + job.progressFile + " as the main progress/TODO state file. Read it before choosing the next task and update it after work.")
+  }
+
+  if (job.lastVerifyFailure) {
+    additions.push("Previous verify command failed. Fix this before moving on. Failure summary: " + String(job.lastVerifyFailure).slice(0, 1200))
+  }
+
   if (job.askNever) {
     additions.push("Do not ask the user questions. Make reasonable assumptions and continue. Only write a short BLOCKED note if truly blocked.")
   }
@@ -658,7 +738,7 @@ function decoratePrompt(job) {
 
   if (!additions.length) return job.action
 
-  return `${job.action}\n\nBybrawe loop instructions:\n- ${additions.join("\n- ")}`
+  return `${job.action}\n\nOpenCode loop instructions:\n- ${additions.join("\n- ")}`
 }
 
 async function runProcess(command, args, cwd, timeoutMs = 60_000) {
@@ -680,6 +760,35 @@ async function runProcess(command, args, cwd, timeoutMs = 60_000) {
       resolve({ code: code ?? 0, stdout: Buffer.concat(chunks).toString("utf8"), stderr: Buffer.concat(errors).toString("utf8") })
     })
   })
+}
+
+async function runShellCommand(command, cwd, timeoutMs = 120_000) {
+  return await new Promise((resolve) => {
+    const child = spawn(command, [], { cwd, shell: true, windowsHide: true })
+    const chunks = []
+    const errors = []
+    const timer = setTimeout(() => {
+      try { child.kill("SIGTERM") } catch {}
+    }, timeoutMs)
+    child.stdout?.on("data", (data) => chunks.push(Buffer.from(data)))
+    child.stderr?.on("data", (data) => errors.push(Buffer.from(data)))
+    child.on("error", (error) => {
+      clearTimeout(timer)
+      resolve({ code: -1, stdout: "", stderr: String(error) })
+    })
+    child.on("close", (code) => {
+      clearTimeout(timer)
+      resolve({ code: code ?? 0, stdout: Buffer.concat(chunks).toString("utf8"), stderr: Buffer.concat(errors).toString("utf8") })
+    })
+  })
+}
+
+async function appendLoopLog(directory, line, extra = {}) {
+  try {
+    await ensureDir(stateDir(directory))
+    const payload = { time: new Date().toISOString(), line, ...extra }
+    await fs.appendFile(path.join(stateDir(directory), "loop.log"), JSON.stringify(payload) + "\n")
+  } catch {}
 }
 
 async function ensureBranch(directory, job, client, sessionID) {
@@ -747,7 +856,7 @@ async function fireAction(directory, client, sessionID, job) {
       parts: [
         {
           type: "text",
-          text: `Bybrawe loop continuation. Continue autonomously.\n\n${decoratePrompt(job)}`,
+          text: `OpenCode loop continuation. Continue autonomously like Claude Code loop mode.\n\n${decoratePrompt(job)}`,
         },
       ],
     },
@@ -808,7 +917,7 @@ async function untilReached(directory, job) {
     "TODO.md",
     "todolist.md",
     "TODOLIST.md",
-    path.join(".opencode", "bybrawe-loop", "until.txt"),
+    path.join(".opencode", "opencode-loop", "until.txt"),
   ]
 
   for (const item of directFiles) {
@@ -841,6 +950,11 @@ async function untilReached(directory, job) {
   return await walk(directory)
 }
 
+async function stopFileReached(directory, job) {
+  if (!job.stopFile) return false
+  return await pathExists(path.resolve(directory, job.stopFile))
+}
+
 async function createCheckpoint(directory, sessionID, job, client) {
   if (!job.checkpointOnly && !job.gitCheckpoint) return
 
@@ -862,7 +976,7 @@ async function createCheckpoint(directory, sessionID, job, client) {
 
   if (job.gitCheckpoint) {
     await runProcess("git", ["add", "-A"], directory, 120_000)
-    const commit = await runProcess("git", ["commit", "-m", `chore: bybrawe loop checkpoint ${timestamp}`], directory, 120_000)
+    const commit = await runProcess("git", ["commit", "-m", `chore: opencode loop checkpoint ${timestamp}`], directory, 120_000)
     await log(client, commit.code === 0 ? "info" : "warn", "Git checkpoint commit finished", { sessionID, code: commit.code, stdout: commit.stdout, stderr: commit.stderr })
   }
 
@@ -897,6 +1011,21 @@ async function finalizeActiveRun(directory, client, sessionID) {
   if (!job) return
 
   job.lastFinishedAt = now()
+
+  if (job.verifyCommand) {
+    const verify = await runShellCommand(job.verifyCommand, directory, job.timeoutMs || 300_000)
+    job.lastVerifyAt = now()
+    job.lastVerifyCode = verify.code
+    if (verify.code === 0) {
+      job.lastVerifyFailure = ""
+      await toast(client, "Loop verify passed: " + job.verifyCommand, "success")
+    } else {
+      job.lastVerifyFailure = (job.verifyCommand + "\nexit=" + verify.code + "\n" + verify.stdout + "\n" + verify.stderr).slice(0, 4000)
+      await toast(client, "Loop verify failed: " + job.verifyCommand, "warning")
+    }
+    await appendLoopLog(directory, "verify", { sessionID, job: job.name || job.id, command: job.verifyCommand, code: verify.code })
+  }
+
   await writeState(directory, sessionID, state)
   await createCheckpoint(directory, sessionID, job, client)
 }
@@ -923,12 +1052,40 @@ async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
 
   let job = due[0]
 
+  if (await stopFileReached(directory, job)) {
+    job.enabled = false
+    state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
+    await writeState(directory, sessionID, state)
+    await toast(client, "Loop stopped by --stop-file: " + job.stopFile, "success")
+    await appendLoopLog(directory, "stop-file", { sessionID, job: job.name || job.id, stopFile: job.stopFile })
+    return
+  }
+
   if (await untilReached(directory, job)) {
     job.enabled = false
     state.jobs = (state.jobs || []).filter((candidate) => candidate.enabled !== false)
     await writeState(directory, sessionID, state)
     await toast(client, `Loop stopped by --until: ${job.until}`, "success")
     return
+  }
+
+  if (job.preflightCommand) {
+    if (job.safe && dangerousShell(job.preflightCommand)) {
+      job.paused = true
+      await writeState(directory, sessionID, state)
+      await toast(client, "Preflight blocked in safe mode and loop paused: " + job.preflightCommand, "error")
+      return
+    }
+    const preflight = await runShellCommand(job.preflightCommand, directory, job.timeoutMs || 300_000)
+    await appendLoopLog(directory, "preflight", { sessionID, job: job.name || job.id, command: job.preflightCommand, code: preflight.code })
+    if (preflight.code !== 0) {
+      job.paused = true
+      job.lastPreflightFailure = (job.preflightCommand + "\nexit=" + preflight.code + "\n" + preflight.stdout + "\n" + preflight.stderr).slice(0, 4000)
+      state.jobs = (state.jobs || []).map((candidate) => candidate.id === job.id ? job : candidate)
+      await writeState(directory, sessionID, state)
+      await toast(client, "Preflight failed and loop paused: " + job.preflightCommand, "warning")
+      return
+    }
   }
 
   job = await ensureBranch(directory, job, client, sessionID)
@@ -945,6 +1102,7 @@ async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
   await writeState(directory, sessionID, state)
 
   await log(client, "info", "Running loop job", { sessionID, job })
+  await appendLoopLog(directory, "run", { sessionID, job: job.name || job.id, runCount: job.runCount })
   await toast(client, `Loop running: ${job.name || job.id}`, "info")
 
   try {
@@ -970,7 +1128,7 @@ async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
   }
 }
 
-export const BybraweLoopPlugin = async ({ client, directory }) => {
+export const OpenCodeLoopPlugin = async ({ client, directory }) => {
   await log(client, "info", "Plugin initialized", { directory })
 
   return {
@@ -993,4 +1151,4 @@ export const BybraweLoopPlugin = async ({ client, directory }) => {
   }
 }
 
-export default BybraweLoopPlugin
+export default OpenCodeLoopPlugin

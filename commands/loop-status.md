@@ -1,5 +1,5 @@
 ---
-description: Show active Bybrawe loop jobs for this session.
+description: Show active OpenCode loop jobs for this session.
 ---
 
-Bybrawe Loop status command. The plugin handles this command.
+OpenCode Loop status command. The plugin handles this command.
