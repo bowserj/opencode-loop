@@ -1,6 +1,6 @@
 {
-  "name": "opencode-loop",
-  "version": "0.4.1",
+  "name": "@bybrawe/opencode-loop",
+  "version": "0.4.2",
   "description": "Claude Code style auto-continue /loop command for OpenCode: autonomous loops, compact scheduling, progress.md TODO automation, verification, checkpoints, and safe long-running coding sessions.",
   "type": "module",
   "main": "src/index.js",
@@ -50,5 +50,8 @@
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.4.0"
+  },
+  "bin": {
+    "opencode-loop": "./scripts/install-node.mjs"
   }
 }

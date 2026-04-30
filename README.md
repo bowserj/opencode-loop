@@ -4,7 +4,8 @@
 
 OpenCode Loop adds a practical `/loop` command to OpenCode so an agent can keep working after each idle turn instead of waiting for you to type “continue” again. It is useful for long coding sessions, `progress.md` workflows, TODO automation, test-fix loops, periodic `/compact`, checkpoints, and safe autonomous development.
 
-Repository: **ByBrawe/opencode-loop**
+Repository: **ByBrawe/opencode-loop**  
+NPM package name: **@bybrawe/opencode-loop**
 
 ## Why this exists
 
@@ -89,7 +90,7 @@ Shell command loop:
 
 ## Installation
 
-OpenCode Loop can be installed from this GitHub repository as a local OpenCode plugin.
+OpenCode Loop can be installed either from this GitHub repository or, after npm publishing, as the scoped npm package `@bybrawe/opencode-loop`.
 
 OpenCode supports two plugin loading modes:
 
@@ -98,7 +99,7 @@ OpenCode supports two plugin loading modes:
 
 This repository is a GitHub repository, so the recommended installation method is the local plugin install below.
 
-> **Important:** when you use the install script, you do **not** need to add `"plugin": ["opencode-loop"]` to `opencode.json`. The script installs the local plugin file directly into OpenCode's plugin directory.
+> **Important:** when you use the install script, you do **not** need to add `"plugin": ["@bybrawe/opencode-loop"]` to `opencode.json`. The script installs the local plugin file and command files directly into OpenCode's config directory.
 
 ### Install from GitHub - Windows PowerShell
 
@@ -183,20 +184,42 @@ copy .\src\index.js .opencode\plugins\opencode-loop.js
 copy .\commands\*.md .opencode\commands\
 ```
 
-### npm package install - only after npm publishing
+### npm install - after publishing `@bybrawe/opencode-loop`
 
-Do **not** use this section for a plain GitHub clone.
+Do **not** use this section for a plain GitHub clone. This is only for the npm package.
 
-OpenCode config plugin entries are for npm packages. Use this only if `opencode-loop` has been published to npm, or if you publish your own npm package.
+The npm package name is scoped:
+
+```text
+@bybrawe/opencode-loop
+```
+
+Recommended npm install command:
+
+```bash
+npx -y @bybrawe/opencode-loop
+```
+
+This copies the plugin file and all `/loop-*` markdown command files into your OpenCode config directory, then you restart OpenCode. This is the most reliable install path because OpenCode slash commands are discovered from command files.
+
+If you only want OpenCode to load the npm plugin package directly, add the scoped package name to your OpenCode config:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-loop"]
+  "plugin": ["@bybrawe/opencode-loop"]
 }
 ```
 
-If the package is not published to npm, this config will not install the GitHub repository. Use the GitHub/local install steps above instead.
+Use the scoped name exactly as shown. `opencode-loop` without `@bybrawe/` is a different npm package name.
+
+To publish this package publicly from an npm account or organization that owns the `bybrawe` scope:
+
+```bash
+npm publish --access public
+```
+
+If the package is not published to npm, the config entry above will not install the GitHub repository. Use the GitHub/local install steps instead.
 
 ### Verify installation
 

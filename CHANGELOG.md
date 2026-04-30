@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Changed npm package name to scoped package `@bybrawe/opencode-loop`.
+- Fixed README npm/OpenCode config examples to use `"plugin": ["@bybrawe/opencode-loop"]`.
+- Added an npm `bin` installer so `npx -y @bybrawe/opencode-loop` can copy plugin and command files into the OpenCode config directory.
+- Clarified that `opencode-loop` and `@bybrawe/opencode-loop` are different npm package names.
+
 ## 0.4.1
 
 - Fixed installation docs for GitHub/local installs.
