@@ -1,7 +1,7 @@
 {
   "name": "opencode-loop-like-claude",
-  "version": "0.3.0",
-  "description": "Claude Code style /loop command for OpenCode: auto-continue, compact scheduling, progress.md TODO automation, verification commands, checkpoints and safe autonomous coding loops.",
+  "version": "0.3.1",
+  "description": "Claude Code style auto-continue /loop command for OpenCode with progress.md workflows, compact scheduling, verification commands, checkpoints, and safe autonomous coding loops.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
