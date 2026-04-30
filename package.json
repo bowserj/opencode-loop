@@ -1,0 +1,36 @@
+{
+  "name": "@bybrawe/opencode-loop",
+  "version": "0.1.0",
+  "description": "A Claude Code style interval/idle loop plugin for OpenCode: /loop 0s prompt, /loop 200m /compact, /loop 10m !npm test.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "commands",
+    "scripts",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check src/index.js",
+    "install:global": "node scripts/install-node.mjs",
+    "pack:zip": "node scripts/make-zip.mjs"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "loop",
+    "ralph",
+    "automation",
+    "bybrawe"
+  ],
+  "author": "Bybrawe",
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.4.0"
+  }
+}
