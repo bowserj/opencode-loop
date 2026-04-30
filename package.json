@@ -1,7 +1,7 @@
 {
   "name": "@bybrawe/opencode-loop",
-  "version": "0.1.0",
-  "description": "A Claude Code style interval/idle loop plugin for OpenCode: /loop 0s prompt, /loop 200m /compact, /loop 10m !npm test.",
+  "version": "0.2.0",
+  "description": "A Claude Code style loop plugin for OpenCode with interval/idle loops, compact schedules, safety flags, checkpoints, presets, watch mode and lifecycle controls.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -13,7 +13,8 @@
     "scripts",
     "examples",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "check": "node --check src/index.js",
@@ -26,7 +27,12 @@
     "loop",
     "ralph",
     "automation",
-    "bybrawe"
+    "bybrawe",
+    "compact",
+    "checkpoint",
+    "scheduler",
+    "progress-md",
+    "todo"
   ],
   "author": "Bybrawe",
   "license": "MIT",
