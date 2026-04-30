@@ -1,23 +1,11 @@
 # Changelog
 
-## 0.3.1
-
-Public README cleanup and English-first examples:
-
-- Rewrote all README examples in English for public GitHub/NPM usage.
-- Removed repository publishing instructions from the README.
-- Replaced internal/project-specific wording with OpenCode Loop and Claude Code style loop terminology.
-- Added a ready-to-copy `progress.md` example for autonomous OpenCode workflows.
-- Updated package metadata and license attribution for a public contributor-owned project.
-- Updated the missing-action help text to use an English example.
-
-
 ## 0.3.0
 
 SEO/public release cleanup and new loop controls:
 
 - Renamed user-facing copy to **OpenCode Loop - Claude Code Style Auto-Continue for OpenCode**.
-- Cleaned public-facing README/title/package metadata so the repo targets OpenCode search terms.
+- Removed Bybrawe branding from the README/title/package metadata so the repo targets OpenCode search terms.
 - Added `/loop-help`.
 - Added `/loop-logs`.
 - Added `--verify "<command>"` to run a real verification command after each assistant turn and feed failures into the next prompt.

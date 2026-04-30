@@ -236,7 +236,7 @@ function parseLoopArgs(raw, defaults = {}) {
 
   const action = stripOuterQuotes(rest || defaults.action || "")
   if (!action) {
-    return { ok: false, error: "Missing action. Example: /loop 0s continue from progress.md" }
+    return { ok: false, error: "Missing action. Example: /loop 0s progress.md'ye göre devam et" }
   }
 
   return {
