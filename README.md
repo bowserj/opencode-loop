@@ -35,10 +35,11 @@ OpenCode Loop is designed for developers searching for:
 
 ## Features
 
-> Note: OpenCode Loop is session-bound. It runs while OpenCode is open and the session receives idle events. If the terminal closes, the machine sleeps, the process is killed, or the provider connection is lost for a long time, the loop cannot continue in the background. Use an external process manager or scheduled `opencode run` script for true daemon behavior.
+> Note: The TUI `/loop` command is session-bound. It runs while OpenCode is open and the session receives idle events. If the terminal closes, the machine sleeps, the process is killed, or the provider connection is lost for a long time, the TUI loop cannot continue in the background. For long-running loops, use `opencode-loopd` daemon mode.
 
 
 - **Claude Code style auto-continue** with `/loop 0s ...`.
+- **Background daemon mode** with `opencode-loopd` for long-running loops outside the OpenCode TUI.
 - **Interval loops** for prompts, slash commands, and shell commands.
 - **Prompt-file support** with `--prompt-file loop-prompt.md` for long reusable instructions.
 - **Include extra context files** with `--include-file`.
@@ -91,6 +92,62 @@ Shell command loop:
 /loop 10m --name tests --safe !npm test
 ```
 
+## Background daemon
+
+The `/loop` command is session-bound. It works while OpenCode is open and the current session emits idle/status events.
+
+If you close OpenCode, restart the terminal, lose connection, or your PC sleeps, the TUI loop will not keep running.
+
+For long-running loops, use the daemon:
+
+```bash
+opencode-loopd --project . --every 5m --prompt-file loop-prompt.md
+```
+
+Run immediately after each OpenCode turn:
+
+```bash
+opencode-loopd --project . --every 0s --prompt "continue from progress.md and implement the next unfinished TODO"
+```
+
+Limit runs:
+
+```bash
+opencode-loopd --project . --every 5m --max-runs 20 --prompt-file loop-prompt.md
+```
+
+Example `loop-prompt.md`:
+
+```md
+Continue from progress.md and implement the next unfinished TODO.
+
+Rules:
+- Do not ask questions.
+- Make reasonable assumptions.
+- Mark completed TODO items with [x].
+- Add useful follow-up TODOs when needed.
+- Run tests/lint/build when available.
+- Do not run destructive commands such as git reset, git clean, rm -rf, force push, deploy, or production migrations.
+- Keep going while work remains.
+```
+
+### Windows Task Scheduler
+
+You can create a Windows scheduled task that runs a one-shot daemon job every N minutes:
+
+```powershell
+opencode-loopd install-task --project "C:\path\to\project" --every 10m --prompt-file loop-prompt.md --name OpenCodeLoop
+```
+
+Remove it:
+
+```powershell
+opencode-loopd uninstall-task --name OpenCodeLoop
+```
+
+For active development, a visible terminal running `opencode-loopd --project . --every 0s ...` is easier to monitor.
+
+
 ## Installation
 
 ### Recommended: install from npm
@@ -134,6 +191,12 @@ Then fully restart OpenCode and run:
 ```text
 /loop-help
 /loop-doctor
+```
+
+The npm package also installs the `opencode-loopd` CLI for background loops:
+
+```bash
+opencode-loopd --help
 ```
 
 ### Why `npx` is the recommended npm install

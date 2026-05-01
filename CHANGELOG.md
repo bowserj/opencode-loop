@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Added `opencode-loopd` background daemon for long-running loops outside the OpenCode TUI.
+- Added `opencode-loopd install-task` and `opencode-loopd uninstall-task` helpers for Windows Task Scheduler.
+- Updated README to clearly explain the difference between session-bound TUI loops and background daemon loops.
+- Added npm bin entry for `opencode-loopd`.
+- Updated package check script to validate the daemon script.
+
 ## 0.4.4
 
 - Made the npm install path the primary README installation method now that the package is published as `@bybrawe/opencode-loop`.
