@@ -7,6 +7,7 @@ const STATE_DIR = ".opencode/opencode-loop"
 const DEFAULT_ACTIVE_GUARD_MS = 60_000
 const IDLE_DEBOUNCE_MS = 1_200
 const BUSY_RETRY_MS = 5_000
+const SESSION_STATUS_CACHE_MS = 1_500
 const MIN_DUE_TIMER_MS = 250
 const MAX_DUE_TIMER_MS = 2_147_000_000
 const MAX_SCAN_FILES = 200
@@ -19,6 +20,7 @@ const handledCommands = new Map()
 const idleTimers = new Map()
 const dueTimers = new Map()
 const sessionStatuses = new Map()
+const sessionStatusSeenAt = new Map()
 
 const DEFAULT_PROGRESS_MD = `# Progress
 
@@ -389,16 +391,22 @@ async function executeTuiCommand(client, command) {
 
 function compactTuiCommandName(command = "compact") {
   const normalized = String(command || "compact").replace(/^\/+/, "").trim().toLowerCase()
-  if (normalized === "compact" || normalized === "summarize") return "session.compact"
+  if (normalized === "compact" || normalized === "summarize") return "session_compact"
   return undefined
 }
 
 async function compactSession(client, sessionID) {
-  try {
-    await executeTuiCommand(client, "session.compact")
-    return true
-  } catch (error) {
-    await log(client, "warn", "tui session.compact failed", { error: sdkErrorMessage(error) })
+  // OpenCode's TUI API accepts legacy keybind aliases (session_compact) in
+  // current builds, while some older docs/examples mention the event value
+  // (session.compact). Try the alias first, then the event value, then the
+  // session summarize endpoint as a last resort.
+  for (const command of ["session_compact", "session.compact"]) {
+    try {
+      await executeTuiCommand(client, command)
+      return true
+    } catch (error) {
+      await log(client, "warn", `tui ${command} failed`, { error: sdkErrorMessage(error) })
+    }
   }
   try {
     await sdkCall(client.session.summarize.bind(client.session), { sessionID }, { path: { id: sessionID }, body: {} })
@@ -734,12 +742,16 @@ function updateSessionStatusFromEvent(event) {
   if (typeof sessionID !== "string") return undefined
   if (event?.type === "session.idle") {
     sessionStatuses.set(sessionID, "idle")
+    sessionStatusSeenAt.set(sessionID, now())
     return { sessionID, idle: true }
   }
   if (event?.type === "session.status") {
     const status = event?.properties?.status
     const type = status && typeof status === "object" ? status.type : undefined
-    if (typeof type === "string") sessionStatuses.set(sessionID, type)
+    if (typeof type === "string") {
+      sessionStatuses.set(sessionID, type)
+      sessionStatusSeenAt.set(sessionID, now())
+    }
     return { sessionID, idle: type === "idle" }
   }
   return undefined
@@ -747,18 +759,30 @@ function updateSessionStatusFromEvent(event) {
 
 async function sessionStatusType(client, sessionID) {
   const cached = sessionStatuses.get(sessionID)
-  if (cached && cached !== "idle") return cached
+  const seenAt = sessionStatusSeenAt.get(sessionID) || 0
+
+  // Idle is safe to trust until OpenCode tells us otherwise. Busy/retry is only
+  // trusted briefly: OpenCode custom commands such as /loop-status create their
+  // own short assistant turn, and some TUI builds do not always emit the final
+  // idle event after that turn. If we cache busy forever, due loop work can get
+  // stuck at "due in every idle" until the user types another command.
+  if (cached === "idle") return cached
+  if (cached && now() - seenAt < SESSION_STATUS_CACHE_MS) return cached
+
   try {
     const data = await sdkCall(client.session.status.bind(client.session), {}, undefined)
     const status = data?.[sessionID]
     const type = status && typeof status === "object" ? status.type : undefined
     if (typeof type === "string") {
       sessionStatuses.set(sessionID, type)
+      sessionStatusSeenAt.set(sessionID, now())
       return type
     }
   } catch {}
+
   const fallback = activeRuns.has(sessionID) ? "busy" : "idle"
   sessionStatuses.set(sessionID, fallback)
+  sessionStatusSeenAt.set(sessionID, now())
   return fallback
 }
 
@@ -1077,7 +1101,7 @@ async function fireAction(directory, client, sessionID, job) {
     }
     const tuiCommand = compactTuiCommandName(command)
     if (tuiCommand) {
-      await executeTuiCommand(client, tuiCommand)
+      await compactSession(client, sessionID)
       return { startsAssistantTurn: true }
     }
     await sdkCall(client.session.command.bind(client.session), { sessionID, command, arguments: argumentsText }, { path: { id: sessionID }, body: { command, arguments: argumentsText } })

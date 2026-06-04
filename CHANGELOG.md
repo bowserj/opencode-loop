@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.9
+
+- Fixed stale-busy recovery for TUI sessions. Cached `busy` / `retry` status is now short-lived, so due jobs no longer get stuck at `due in every idle` after `/loop-status` or other short custom-command turns.
+- Improved due-timer behavior when OpenCode misses or delays the final idle event after a command turn.
+- Fixed `/compact` routing for current OpenCode TUI builds by trying `session_compact` first, then `session.compact`, then the session summarize fallback.
+- Kept the command markdown templates short; OpenCode still creates a tiny `OK` turn for custom commands because markdown commands are prompt templates.
+
 ## 0.5.8
 
 - Added a real due timer for TUI loop jobs, so delayed jobs can wake without waiting for another OpenCode event.
