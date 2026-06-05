@@ -4,13 +4,14 @@ import { spawn } from "node:child_process"
 
 const SERVICE = "opencode-loop"
 const STATE_DIR = ".opencode/opencode-loop"
-const DEFAULT_ACTIVE_GUARD_MS = 60_000
-const STALE_ACTIVE_RECOVERY_MS = 60_000
+const DEFAULT_ACTIVE_GUARD_MS = 45_000
+const STALE_ACTIVE_RECOVERY_MS = 45_000
 const IDLE_DEBOUNCE_MS = 1_200
 const BUSY_RETRY_MS = 5_000
 const SESSION_STATUS_CACHE_MS = 1_500
 const MIN_DUE_TIMER_MS = 250
 const MAX_DUE_TIMER_MS = 2_147_000_000
+const HEARTBEAT_MS = 2_500
 const MAX_SCAN_FILES = 200
 const MAX_SCAN_BYTES = 2_000_000
 const GOAL_REPORT_DIR = "goals"
@@ -21,6 +22,9 @@ const handledCommands = new Map()
 const idleTimers = new Map()
 const dueTimers = new Map()
 const watchdogTimers = new Map()
+const runLocks = new Map()
+const knownSessions = new Map()
+let heartbeatTimer
 const sessionStatuses = new Map()
 const sessionStatusSeenAt = new Map()
 
@@ -444,7 +448,7 @@ async function say(client, sessionID, text) {
   } catch {}
 }
 
-function commandKey(sessionID, name, args) { return `${sessionID || "no-session"}:${name || ""}:${args || ""}` }
+function commandKey(sessionID, name, args) { return `${sessionID || "no-session"}:${name || ""}:${normalizeArgsForKey(args)}` }
 function markHandled(sessionID, name, args) {
   handledCommands.set(commandKey(sessionID, name, args), now())
   for (const [key, time] of handledCommands.entries()) if (now() - time > 30_000) handledCommands.delete(key)
@@ -456,6 +460,41 @@ function wasHandled(sessionID, name, args) {
 
 function commandName(name) { return String(name || "") }
 function isPreset(name) { return ["loop-dev", "loop-testfix", "loop-compact", "loop-progress", "loop-safe-dev", "loop-command", "loop-cmd", "loop-prompt", "loop-ask", "loop-shell"].includes(name) }
+
+function normalizeArgsForKey(args) {
+  if (args === undefined || args === null) return ""
+  if (typeof args === "string") return args.trim().replace(/\s+/g, " ")
+  if (Array.isArray(args)) return args.map(normalizeArgsForKey).join(" ").trim().replace(/\s+/g, " ")
+  try { return JSON.stringify(args) } catch { return String(args) }
+}
+
+function rememberSession(directory, client, sessionID) {
+  if (!sessionID) return
+  knownSessions.set(sessionID, { directory, client, seenAt: now() })
+  startHeartbeat()
+}
+
+function startHeartbeat() {
+  if (heartbeatTimer) return
+  heartbeatTimer = setInterval(() => {
+    for (const [sessionID, info] of [...knownSessions.entries()]) {
+      if (!info || now() - (info.seenAt || 0) > 12 * 60 * 60 * 1000) {
+        knownSessions.delete(sessionID)
+        continue
+      }
+      Promise.resolve()
+        .then(async () => {
+          await finalizeActiveRun(info.directory, info.client, sessionID, { forceStale: true })
+          await maybeRunDueJobs(info.directory, info.client, sessionID, { heartbeat: true })
+        })
+        .catch((error) => appendLoopLog(info.directory, "heartbeat-error", { sessionID, error: sdkErrorMessage(error) }).catch(() => {}))
+    }
+    if (!knownSessions.size && heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = undefined
+    }
+  }, HEARTBEAT_MS)
+}
 function presetDefaults(name, args) {
   const [maybeDuration, rest] = splitFirst(args)
   const parsed = parseDuration(maybeDuration)
@@ -889,7 +928,9 @@ async function startWatchdog(directory, client, sessionID) {
       })
       .catch((error) => appendLoopLog(directory, "watchdog-error", { sessionID, error: sdkErrorMessage(error) }).catch(() => {}))
   }, Math.max(1_000, BUSY_RETRY_MS))
-  if (typeof timer.unref === "function") timer.unref()
+  // Keep this interval referenced. In current OpenCode TUI builds, plugin hooks
+  // are event-driven; a referenced watchdog helps scheduled loops wake up even
+  // when no manual /loop-status command is typed.
   watchdogTimers.set(sessionID, timer)
 }
 
@@ -1194,112 +1235,128 @@ ${prompt}` }] } })
 }
 
 async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
+  rememberSession(directory, client, sessionID)
   const reschedule = async (minDelayMs = 0) => { await scheduleDueWork(directory, client, sessionID, minDelayMs) }
 
-  if (!await sessionIsIdle(client, sessionID, directory)) {
-    if (options.force) await toast(client, "Loop queued: session is busy; it will run on the next idle check.", "info")
+  if (runLocks.has(sessionID)) {
     await reschedule(BUSY_RETRY_MS)
     return
   }
-  const active = activeRuns.get(sessionID)
-  if (active && active.job?.noOverlap !== false && now() - active.startedAt < (active.job?.timeoutMs || DEFAULT_ACTIVE_GUARD_MS)) {
-    await reschedule(BUSY_RETRY_MS)
-    return
-  }
-
-  const state = await readState(directory, sessionID)
-  for (const job of state.jobs || []) {
-    if (job.watchPaths?.length && !job.paused && job.enabled && await watchChanged(directory, job)) job.lastRunAt = 0
-  }
-  let due = dueJobs(state, options.force)
-  if (!due.length) {
-    await writeState(directory, sessionID, state)
-    await reschedule()
-    return
-  }
-  let job = due[0]
-
-  if (job.maxRuntimeMs > 0 && now() - Date.parse(job.createdAt || new Date().toISOString()) >= job.maxRuntimeMs) {
-    state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
-    await writeState(directory, sessionID, state)
-    await notifyJob(directory, job, "max_runtime_reached")
-    await toast(client, `Loop stopped by --max-runtime: ${job.name || job.id}`, "success")
-    await appendLoopLog(directory, "max-runtime", { sessionID, job: job.name || job.id })
-    await reschedule()
-    return
-  }
-  if (job.stopFile && await pathExists(path.resolve(directory, job.stopFile))) {
-    state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
-    await writeState(directory, sessionID, state)
-    await notifyJob(directory, job, "stop_file")
-    await toast(client, "Loop stopped by --stop-file: " + job.stopFile, "success")
-    await reschedule()
-    return
-  }
-  if (await untilReached(directory, job)) {
-    state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
-    await writeState(directory, sessionID, state)
-    await notifyJob(directory, job, "until_reached")
-    await toast(client, `Loop stopped by --until: ${job.until}`, "success")
-    await reschedule()
-    return
-  }
-
-  if (job.preflightCommand) {
-    if (job.safe && dangerousShell(job.preflightCommand)) {
-      job.paused = true
-      await writeState(directory, sessionID, state)
-      await notifyJob(directory, job, "preflight_blocked")
-      await toast(client, "Preflight blocked in safe mode and loop paused: " + job.preflightCommand, "error")
-      await reschedule()
-      return
-    }
-    const preflight = await runShellCommand(job.preflightCommand, directory, job.timeoutMs || 300_000)
-    await appendLoopLog(directory, "preflight", { sessionID, job: job.name || job.id, command: job.preflightCommand, code: preflight.code })
-    if (preflight.code !== 0) {
-      job.paused = true
-      job.failureCount = (job.failureCount || 0) + 1
-      job.lastPreflightFailure = (job.preflightCommand + "\nexit=" + preflight.code + "\n" + preflight.stdout + "\n" + preflight.stderr).slice(0, 4000)
-      state.jobs = (state.jobs || []).map((candidate) => candidate.id === job.id ? job : candidate)
-      await writeState(directory, sessionID, state)
-      await notifyJob(directory, job, "preflight_failed")
-      await toast(client, "Preflight failed and loop paused: " + job.preflightCommand, "warning")
-      await reschedule()
-      return
-    }
-  }
-
-  job = await ensureBranch(directory, job, client, sessionID)
-  job = await maybeCompact(client, sessionID, job)
-  job.lastRunAt = now()
-  job.runCount = (job.runCount || 0) + 1
-  if (job.maxRuns > 0 && job.runCount >= job.maxRuns) {
-    job.enabled = false
-    await notifyJob(directory, job, "max_runs_reached")
-  }
-  state.jobs = (state.jobs || []).map((candidate) => candidate.id === job.id ? job : candidate)
-  await writeState(directory, sessionID, state)
-  await appendLoopLog(directory, "run", { sessionID, job: job.name || job.id, runCount: job.runCount })
-  await toast(client, `Loop running: ${job.name || job.id}`, "info")
-
+  runLocks.set(sessionID, now())
+  let job
   try {
-    const result = await fireAction(directory, client, sessionID, job)
-    if (!result.startsAssistantTurn) {
-      const fresh = await readState(directory, sessionID)
-      fresh.jobs = (fresh.jobs || []).filter((candidate) => candidate.enabled !== false || isGoalJob(candidate))
-      await writeState(directory, sessionID, fresh)
+    await finalizeActiveRun(directory, client, sessionID, { forceStale: true })
+    if (!await sessionIsIdle(client, sessionID, directory)) {
+      if (options.force) await toast(client, "Loop queued: session is busy; it will run on the next idle check.", "info")
+      await reschedule(BUSY_RETRY_MS)
+      return
+    }
+
+    const active = activeRuns.get(sessionID)
+    const activeAge = active ? now() - (active.startedAt || 0) : 0
+    const activeGuard = active?.job?.timeoutMs || active?.job?.activeRecoveryMs || DEFAULT_ACTIVE_GUARD_MS
+    if (active && active.job?.noOverlap !== false && activeAge < activeGuard) {
+      await reschedule(BUSY_RETRY_MS)
+      return
+    }
+    if (active && activeAge >= activeGuard) clearActiveRun(sessionID)
+
+    const state = await readState(directory, sessionID)
+    for (const candidate of state.jobs || []) {
+      if (candidate.watchPaths?.length && !candidate.paused && candidate.enabled && await watchChanged(directory, candidate)) candidate.lastRunAt = 0
+    }
+    const due = dueJobs(state, options.force)
+    if (!due.length) {
+      await writeState(directory, sessionID, state)
       await reschedule()
       return
     }
-    let timer
-    if (job.timeoutMs > 0) timer = setTimeout(() => { fireSdk(client, "session.abort", client.session.abort.bind(client.session), { sessionID }, { path: { id: sessionID }, body: {} }); toast(client, `Loop timeout fired: ${job.name || job.id}`, "warning").catch(() => {}) }, job.timeoutMs)
-    activeRuns.set(sessionID, { jobId: job.id, job, startedAt: now(), timer })
-    await reschedule(BUSY_RETRY_MS)
-  } catch (error) {
-    clearActiveRun(sessionID)
-    await toast(client, `Loop job failed: ${error instanceof Error ? error.message : String(error)}`, "error")
-    await appendLoopLog(directory, "error", { sessionID, job: job.name || job.id, error: error instanceof Error ? error.message : String(error) })
-    await reschedule(BUSY_RETRY_MS)
+    job = due[0]
+
+    if (job.maxRuntimeMs > 0 && now() - Date.parse(job.createdAt || new Date().toISOString()) >= job.maxRuntimeMs) {
+      state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
+      await writeState(directory, sessionID, state)
+      await notifyJob(directory, job, "max_runtime_reached")
+      await toast(client, `Loop stopped by --max-runtime: ${job.name || job.id}`, "success")
+      await appendLoopLog(directory, "max-runtime", { sessionID, job: job.name || job.id })
+      await reschedule()
+      return
+    }
+    if (job.stopFile && await pathExists(path.resolve(directory, job.stopFile))) {
+      state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
+      await writeState(directory, sessionID, state)
+      await notifyJob(directory, job, "stop_file")
+      await toast(client, "Loop stopped by --stop-file: " + job.stopFile, "success")
+      await reschedule()
+      return
+    }
+    if (await untilReached(directory, job)) {
+      state.jobs = (state.jobs || []).filter((candidate) => candidate.id !== job.id)
+      await writeState(directory, sessionID, state)
+      await notifyJob(directory, job, "until_reached")
+      await toast(client, `Loop stopped by --until: ${job.until}`, "success")
+      await reschedule()
+      return
+    }
+
+    if (job.preflightCommand) {
+      if (job.safe && dangerousShell(job.preflightCommand)) {
+        job.paused = true
+        await writeState(directory, sessionID, state)
+        await notifyJob(directory, job, "preflight_blocked")
+        await toast(client, "Preflight blocked in safe mode and loop paused: " + job.preflightCommand, "error")
+        await reschedule()
+        return
+      }
+      const preflight = await runShellCommand(job.preflightCommand, directory, job.timeoutMs || 300_000)
+      await appendLoopLog(directory, "preflight", { sessionID, job: job.name || job.id, command: job.preflightCommand, code: preflight.code })
+      if (preflight.code !== 0) {
+        job.paused = true
+        job.failureCount = (job.failureCount || 0) + 1
+        job.lastPreflightFailure = (job.preflightCommand + "\nexit=" + preflight.code + "\n" + preflight.stdout + "\n" + preflight.stderr).slice(0, 4000)
+        state.jobs = (state.jobs || []).map((candidate) => candidate.id === job.id ? job : candidate)
+        await writeState(directory, sessionID, state)
+        await notifyJob(directory, job, "preflight_failed")
+        await toast(client, "Preflight failed and loop paused: " + job.preflightCommand, "warning")
+        await reschedule()
+        return
+      }
+    }
+
+    job = await ensureBranch(directory, job, client, sessionID)
+    job = await maybeCompact(client, sessionID, job)
+    job.lastRunAt = now()
+    job.runCount = (job.runCount || 0) + 1
+    if (job.maxRuns > 0 && job.runCount >= job.maxRuns) {
+      job.enabled = false
+      await notifyJob(directory, job, "max_runs_reached")
+    }
+    state.jobs = (state.jobs || []).map((candidate) => candidate.id === job.id ? job : candidate)
+    await writeState(directory, sessionID, state)
+    await appendLoopLog(directory, "run", { sessionID, job: job.name || job.id, runCount: job.runCount })
+    await toast(client, `Loop running: ${job.name || job.id}`, "info")
+
+    try {
+      const result = await fireAction(directory, client, sessionID, job)
+      if (!result.startsAssistantTurn) {
+        const fresh = await readState(directory, sessionID)
+        fresh.jobs = (fresh.jobs || []).filter((candidate) => candidate.enabled !== false || isGoalJob(candidate))
+        await writeState(directory, sessionID, fresh)
+        await reschedule()
+        return
+      }
+      let timer
+      if (job.timeoutMs > 0) timer = setTimeout(() => { fireSdk(client, "session.abort", client.session.abort.bind(client.session), { sessionID }, { path: { id: sessionID }, body: {} }); toast(client, `Loop timeout fired: ${job.name || job.id}`, "warning").catch(() => {}) }, job.timeoutMs)
+      activeRuns.set(sessionID, { jobId: job.id, job, startedAt: now(), timer })
+      await reschedule(BUSY_RETRY_MS)
+    } catch (error) {
+      clearActiveRun(sessionID)
+      await toast(client, `Loop job failed: ${error instanceof Error ? error.message : String(error)}`, "error")
+      await appendLoopLog(directory, "error", { sessionID, job: job?.name || job?.id, error: error instanceof Error ? error.message : String(error) })
+      await reschedule(BUSY_RETRY_MS)
+    }
+  } finally {
+    runLocks.delete(sessionID)
   }
 }
 
@@ -1320,6 +1377,7 @@ async function addLoop(directory, client, sessionID, args, defaults = {}) {
   const parsed = parseLoopArgs(args, defaults)
   if (!parsed.ok) { await toast(client, parsed.error, "warning"); return }
   if (parsed.job.watchPaths.length) parsed.job.watchSnapshot = await snapshotPaths(directory, parsed.job.watchPaths)
+  if (!parsed.job.activeRecoveryMs) parsed.job.activeRecoveryMs = Math.max(20_000, Math.min(90_000, (parsed.job.intervalMs || 0) + 10_000))
   if (parsed.job.dryRun) { await toast(client, `Loop dry run: ${jobLabel(parsed.job)}`, "info"); await say(client, sessionID, "OpenCode loop dry run:\n```json\n" + JSON.stringify(parsed.job, null, 2) + "\n```"); return }
   const state = await readState(directory, sessionID)
   const jobs = Array.isArray(state.jobs) ? state.jobs : []
@@ -1532,6 +1590,7 @@ async function handleCommand(directory, client, input, fallbackName, fallbackArg
   const sessionID = input?.sessionID
   const args = input?.arguments ?? fallbackArgs ?? ""
   if (!sessionID || !name) return false
+  rememberSession(directory, client, sessionID)
   if (wasHandled(sessionID, name, args)) return true
   markHandled(sessionID, name, args)
 
@@ -1616,6 +1675,7 @@ export const OpenCodeLoopPlugin = async ({ client, directory }) => {
         await handleCommand(directory, client, props, props.name, props.arguments)
       }
       const statusUpdate = updateSessionStatusFromEvent(event)
+      if (statusUpdate?.sessionID) rememberSession(directory, client, statusUpdate.sessionID)
       if (statusUpdate?.idle) scheduleIdleWork(directory, client, statusUpdate.sessionID)
     },
   }

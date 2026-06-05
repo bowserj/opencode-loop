@@ -9,9 +9,14 @@ It is useful for long coding sessions, `progress.md` workflows, TODO automation,
 Repository: **ByBrawe/opencode-loop**  
 NPM package name: **@bybrawe/opencode-loop**
 
+### Scheduler heartbeat note
+
+v0.5.11 includes a referenced heartbeat scheduler. This is important in OpenCode TUI because local command hooks are event-driven: a normal `/loop-status` command can wake the plugin, but a timer-only loop should not depend on a user typing another command. The heartbeat periodically checks active loop jobs, clears stale completed runs, and starts due work only when the session appears idle.
+
+
 ## Current status
 
-**v0.5.10 is a reliability hotfix for recurring timers that only continued after manual activity.** It keeps the real due timer from v0.5.8 and the stale-busy recovery from v0.5.9, then adds a watchdog checker and stronger stale-active-run recovery. This targets the case where `/loop 1m ...` reaches its due time but does not fire until you run `/loop-status` or type another command. Scheduled `/compact` still routes through OpenCode's current TUI alias first, with fallback paths for older builds.
+**v0.5.11 is a reliability hotfix for recurring timers that only continued after manual activity.** It keeps the real due timer from v0.5.8 and the stale-busy recovery from v0.5.9, then adds a watchdog checker and stronger stale-active-run recovery. This targets the case where `/loop 1m ...` reaches its due time but does not fire until you run `/loop-status` or type another command. Scheduled `/compact` still routes through OpenCode's current TUI alias first, with fallback paths for older builds.
 
 The known update-related symptoms from older builds are fixed:
 
@@ -27,7 +32,7 @@ The known update-related symptoms from older builds are fixed:
 
 The TUI loop is still intentionally session-bound: it runs while OpenCode is open and the current session emits status/idle events. For long-running background work after closing the terminal or OpenCode, use `opencode-loopd`.
 
-## v0.5.10 quick behavior guide
+## v0.5.11 quick behavior guide
 
 OpenCode Loop has two triggers now:
 
@@ -74,7 +79,7 @@ Run a shell command every 10 minutes when idle.
 
 Experimental persistent goal mode: keep working until the goal is complete, blocked, paused, cleared, or a safety limit is reached.
 
-> Note: OpenCode custom command markdown still creates a tiny assistant turn for slash commands. v0.5.10 keeps these command templates short and asks the model to reply `OK`. The actual loop scheduling is handled locally by the plugin. If that short turn briefly makes OpenCode look busy, the loop now recovers with fresh status checks, stale-active-run recovery, and a watchdog that does not require another manual command.
+> Note: OpenCode custom command markdown still creates a tiny assistant turn for slash commands. v0.5.11 keeps these command templates short and asks the model to reply `OK`. The actual loop scheduling is handled locally by the plugin. If that short turn briefly makes OpenCode look busy, the loop now recovers with fresh status checks, stale-active-run recovery, and a watchdog that does not require another manual command.
 
 ## Why this exists
 

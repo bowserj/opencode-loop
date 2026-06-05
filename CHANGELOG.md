@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.10
+## 0.5.11
 
 - Added a watchdog loop in addition to one-shot due timers, so recurring jobs keep checking due work even if OpenCode misses an idle event or a due timeout gets effectively stuck behind a stale busy state.
 - Added stronger stale-active-run recovery. If a plugin-injected run is still marked active after the recovery window, the scheduler treats it as finished, finalizes it, and continues without waiting for another manual command such as `/loop-status`.
