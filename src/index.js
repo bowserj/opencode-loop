@@ -5,6 +5,7 @@ import { spawn } from "node:child_process"
 const SERVICE = "opencode-loop"
 const STATE_DIR = ".opencode/opencode-loop"
 const DEFAULT_ACTIVE_GUARD_MS = 60_000
+const STALE_ACTIVE_RECOVERY_MS = 60_000
 const IDLE_DEBOUNCE_MS = 1_200
 const BUSY_RETRY_MS = 5_000
 const SESSION_STATUS_CACHE_MS = 1_500
@@ -19,6 +20,7 @@ const activeRuns = new Map()
 const handledCommands = new Map()
 const idleTimers = new Map()
 const dueTimers = new Map()
+const watchdogTimers = new Map()
 const sessionStatuses = new Map()
 const sessionStatusSeenAt = new Map()
 
@@ -757,7 +759,34 @@ function updateSessionStatusFromEvent(event) {
   return undefined
 }
 
-async function sessionStatusType(client, sessionID) {
+function staleActiveRun(sessionID) {
+  const active = activeRuns.get(sessionID)
+  if (!active) return false
+  const age = now() - (active.startedAt || 0)
+  const configured = Number(active.job?.staleActiveRecoveryMs || active.job?.activeRecoveryMs || 0)
+  const threshold = Number.isFinite(configured) && configured > 0 ? configured : STALE_ACTIVE_RECOVERY_MS
+  return age >= threshold
+}
+
+async function readLiveSessionStatus(client, sessionID, directory) {
+  const argsList = []
+  if (directory) argsList.push({ workspace: directory }, { directory })
+  argsList.push({})
+  for (const args of argsList) {
+    try {
+      const result = await client.session.status(args)
+      const error = sdkError(result)
+      if (error) continue
+      const data = sdkData(result)
+      const status = data?.[sessionID]
+      const type = status && typeof status === "object" ? status.type : undefined
+      if (typeof type === "string") return { type, source: "sdk" }
+    } catch {}
+  }
+  return undefined
+}
+
+async function sessionStatusType(client, sessionID, directory, options = {}) {
   const cached = sessionStatuses.get(sessionID)
   const seenAt = sessionStatusSeenAt.get(sessionID) || 0
 
@@ -769,25 +798,30 @@ async function sessionStatusType(client, sessionID) {
   if (cached === "idle") return cached
   if (cached && now() - seenAt < SESSION_STATUS_CACHE_MS) return cached
 
-  try {
-    const data = await sdkCall(client.session.status.bind(client.session), {}, undefined)
-    const status = data?.[sessionID]
-    const type = status && typeof status === "object" ? status.type : undefined
-    if (typeof type === "string") {
-      sessionStatuses.set(sessionID, type)
+  const live = await readLiveSessionStatus(client, sessionID, directory)
+  if (live?.type) {
+    // Some OpenCode 1.15.x TUI builds can leave session.status at busy after a
+    // plugin-injected turn until the next user command touches the session.
+    // When the only reason we still think the session is busy is our own stale
+    // active-run guard, recover instead of waiting for another manual command.
+    if ((live.type === "busy" || live.type === "retry") && options.recoverStaleActive !== false && staleActiveRun(sessionID)) {
+      sessionStatuses.set(sessionID, "idle")
       sessionStatusSeenAt.set(sessionID, now())
-      return type
+      return "idle"
     }
-  } catch {}
+    sessionStatuses.set(sessionID, live.type)
+    sessionStatusSeenAt.set(sessionID, now())
+    return live.type
+  }
 
-  const fallback = activeRuns.has(sessionID) ? "busy" : "idle"
+  const fallback = activeRuns.has(sessionID) && !staleActiveRun(sessionID) ? "busy" : "idle"
   sessionStatuses.set(sessionID, fallback)
   sessionStatusSeenAt.set(sessionID, now())
   return fallback
 }
 
-async function sessionIsIdle(client, sessionID) {
-  return await sessionStatusType(client, sessionID) === "idle"
+async function sessionIsIdle(client, sessionID, directory, options = {}) {
+  return await sessionStatusType(client, sessionID, directory, options) === "idle"
 }
 
 function scheduleIdleWork(directory, client, sessionID) {
@@ -797,12 +831,12 @@ function scheduleIdleWork(directory, client, sessionID) {
     idleTimers.delete(sessionID)
     Promise.resolve()
       .then(async () => {
-        if (!await sessionIsIdle(client, sessionID)) {
+        if (!await sessionIsIdle(client, sessionID, directory)) {
           await scheduleDueWork(directory, client, sessionID, BUSY_RETRY_MS)
           return
         }
         await finalizeActiveRun(directory, client, sessionID)
-        if (!await sessionIsIdle(client, sessionID)) {
+        if (!await sessionIsIdle(client, sessionID, directory)) {
           await scheduleDueWork(directory, client, sessionID, BUSY_RETRY_MS)
           return
         }
@@ -836,6 +870,35 @@ function nextDueDelay(state) {
   return Math.max(0, soonest - current)
 }
 
+async function startWatchdog(directory, client, sessionID) {
+  if (watchdogTimers.has(sessionID)) return
+  const timer = setInterval(() => {
+    Promise.resolve()
+      .then(async () => {
+        const state = await readState(directory, sessionID)
+        const delay = nextDueDelay(state)
+        const hasJobs = (state.jobs || []).some((job) => job.enabled !== false && !job.paused && (!isGoalJob(job) || !["completed", "blocked", "cleared"].includes(job.goalStatus)))
+        if (!hasJobs || !Number.isFinite(delay)) {
+          const existing = watchdogTimers.get(sessionID)
+          if (existing) clearInterval(existing)
+          watchdogTimers.delete(sessionID)
+          return
+        }
+        if (delay <= 0) await maybeRunDueJobs(directory, client, sessionID)
+        else await scheduleDueWork(directory, client, sessionID)
+      })
+      .catch((error) => appendLoopLog(directory, "watchdog-error", { sessionID, error: sdkErrorMessage(error) }).catch(() => {}))
+  }, Math.max(1_000, BUSY_RETRY_MS))
+  if (typeof timer.unref === "function") timer.unref()
+  watchdogTimers.set(sessionID, timer)
+}
+
+function stopWatchdog(sessionID) {
+  const timer = watchdogTimers.get(sessionID)
+  if (timer) clearInterval(timer)
+  watchdogTimers.delete(sessionID)
+}
+
 async function scheduleDueWork(directory, client, sessionID, minDelayMs = 0) {
   const previous = dueTimers.get(sessionID)
   if (previous) clearTimeout(previous)
@@ -852,12 +915,12 @@ async function scheduleDueWork(directory, client, sessionID, minDelayMs = 0) {
     dueTimers.delete(sessionID)
     Promise.resolve()
       .then(async () => {
-        if (!await sessionIsIdle(client, sessionID)) {
+        if (!await sessionIsIdle(client, sessionID, directory)) {
           await scheduleDueWork(directory, client, sessionID, BUSY_RETRY_MS)
           return
         }
         await finalizeActiveRun(directory, client, sessionID)
-        if (!await sessionIsIdle(client, sessionID)) {
+        if (!await sessionIsIdle(client, sessionID, directory)) {
           await scheduleDueWork(directory, client, sessionID, BUSY_RETRY_MS)
           return
         }
@@ -869,6 +932,7 @@ async function scheduleDueWork(directory, client, sessionID, minDelayMs = 0) {
       })
   }, wait)
   dueTimers.set(sessionID, timer)
+  await startWatchdog(directory, client, sessionID)
 }
 
 function dueJobs(state, force = false) {
@@ -1132,7 +1196,7 @@ ${prompt}` }] } })
 async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
   const reschedule = async (minDelayMs = 0) => { await scheduleDueWork(directory, client, sessionID, minDelayMs) }
 
-  if (!await sessionIsIdle(client, sessionID)) {
+  if (!await sessionIsIdle(client, sessionID, directory)) {
     if (options.force) await toast(client, "Loop queued: session is busy; it will run on the next idle check.", "info")
     await reschedule(BUSY_RETRY_MS)
     return
@@ -1291,6 +1355,7 @@ async function stopLoop(directory, client, sessionID, args) {
     await removeState(directory, sessionID)
     clearActiveRun(sessionID)
     const due = dueTimers.get(sessionID); if (due) clearTimeout(due); dueTimers.delete(sessionID)
+    stopWatchdog(sessionID)
     await toast(client, "All loops stopped for this session.", "success")
     return
   }

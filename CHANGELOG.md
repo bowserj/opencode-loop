@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.10
+
+- Added a watchdog loop in addition to one-shot due timers, so recurring jobs keep checking due work even if OpenCode misses an idle event or a due timeout gets effectively stuck behind a stale busy state.
+- Added stronger stale-active-run recovery. If a plugin-injected run is still marked active after the recovery window, the scheduler treats it as finished, finalizes it, and continues without waiting for another manual command such as `/loop-status`.
+- Refreshed session status with workspace-aware calls before trusting cached busy/retry state.
+- Kept `/compact` routing from v0.5.9: `session_compact` first, then `session.compact`, then summarize fallback.
+- This targets the observed case where `/loop 1m ...` only continued after manually running `/loop-status`.
+
 ## 0.5.9
 
 - Fixed stale-busy recovery for TUI sessions. Cached `busy` / `retry` status is now short-lived, so due jobs no longer get stuck at `due in every idle` after `/loop-status` or other short custom-command turns.

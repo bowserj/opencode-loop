@@ -11,7 +11,7 @@ NPM package name: **@bybrawe/opencode-loop**
 
 ## Current status
 
-**v0.5.9 is a reliability hotfix for stale-busy status and `/compact` routing.** It keeps the real due timer from v0.5.8, but no longer trusts a cached `busy` / `retry` session status forever. This fixes the case where `/loop-status` or another short custom-command turn could leave a loop showing `due in every idle` without firing. It also routes scheduled `/compact` through OpenCode's current TUI alias first, with fallback paths for older builds.
+**v0.5.10 is a reliability hotfix for recurring timers that only continued after manual activity.** It keeps the real due timer from v0.5.8 and the stale-busy recovery from v0.5.9, then adds a watchdog checker and stronger stale-active-run recovery. This targets the case where `/loop 1m ...` reaches its due time but does not fire until you run `/loop-status` or type another command. Scheduled `/compact` still routes through OpenCode's current TUI alias first, with fallback paths for older builds.
 
 The known update-related symptoms from older builds are fixed:
 
@@ -27,7 +27,7 @@ The known update-related symptoms from older builds are fixed:
 
 The TUI loop is still intentionally session-bound: it runs while OpenCode is open and the current session emits status/idle events. For long-running background work after closing the terminal or OpenCode, use `opencode-loopd`.
 
-## v0.5.9 quick behavior guide
+## v0.5.10 quick behavior guide
 
 OpenCode Loop has two triggers now:
 
@@ -74,7 +74,7 @@ Run a shell command every 10 minutes when idle.
 
 Experimental persistent goal mode: keep working until the goal is complete, blocked, paused, cleared, or a safety limit is reached.
 
-> Note: OpenCode custom command markdown still creates a tiny assistant turn for slash commands. v0.5.9 keeps these command templates short and asks the model to reply `OK`. The actual loop scheduling is handled locally by the plugin. If that short turn briefly makes OpenCode look busy, the loop now recovers by refreshing stale busy status on the next due retry.
+> Note: OpenCode custom command markdown still creates a tiny assistant turn for slash commands. v0.5.10 keeps these command templates short and asks the model to reply `OK`. The actual loop scheduling is handled locally by the plugin. If that short turn briefly makes OpenCode look busy, the loop now recovers with fresh status checks, stale-active-run recovery, and a watchdog that does not require another manual command.
 
 ## Why this exists
 

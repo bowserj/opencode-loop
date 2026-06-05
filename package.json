@@ -1,7 +1,7 @@
 {
   "name": "@bybrawe/opencode-loop",
-  "version": "0.5.9",
-  "description": "Claude Code/Codex style /loop and experimental goal mode for OpenCode: reliable timers, stale-busy recovery, idle-safe loops, scheduled commands, compact scheduling, verification, checkpoints, and persistent coding goals.",
+  "version": "0.5.10",
+  "description": "Claude Code/Codex style /loop and experimental goal mode for OpenCode: watchdog timers, stale-busy recovery, idle-safe loops, scheduled commands, compact scheduling, verification, checkpoints, and persistent coding goals.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
