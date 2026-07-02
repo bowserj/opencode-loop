@@ -1135,9 +1135,13 @@ async function runGoalChecks(directory, sessionID, job, client) {
   return job
 }
 
-async function finalizeActiveRun(directory, client, sessionID) {
+async function finalizeActiveRun(directory, client, sessionID, options = {}) {
   const active = activeRuns.get(sessionID)
   if (!active) return
+  // forceStale callers (heartbeat, pre-run sweep) can fire while the assistant
+  // turn is still running; only reap runs past the stale threshold so verify,
+  // checkpoints, and --timeout act on finished turns.
+  if (options.forceStale && !staleActiveRun(sessionID)) return
   clearActiveRun(sessionID)
   const state = await readState(directory, sessionID)
   let job = (state.jobs || []).find((candidate) => candidate.id === active.jobId)
@@ -1689,5 +1693,5 @@ export {
   jobDueAt, dueJobs, nextDueDelay,
   dangerousShell, actionKind, decoratePrompt, sameLoopDefinition,
   readState, writeState, statePath,
-  finalizeActiveRun, activeRuns, dueTimers, stopWatchdog,
+  finalizeActiveRun, staleActiveRun, activeRuns, dueTimers, stopWatchdog,
 }

@@ -39,6 +39,20 @@ function goalJob(overrides = {}) {
   }
 }
 
+function promptJob(overrides = {}) {
+  return {
+    id: "p1",
+    name: "dev",
+    action: "continue",
+    intervalMs: 0,
+    enabled: true,
+    paused: false,
+    runCount: 1,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
 test("finalizeActiveRun completes a goal job without throwing (B1)", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-finalize-"))
   const sid = "ses_goal"
@@ -52,5 +66,36 @@ test("finalizeActiveRun completes a goal job without throwing (B1)", async () =>
   assert.equal(activeRuns.has(sid), false)
   const state = await readState(dir, sid)
   assert.equal(state.jobs.length, 1)
+  assert.ok(state.jobs[0].lastFinishedAt > 0)
+})
+
+test("forceStale leaves fresh active runs untouched (B2)", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-finalize-"))
+  const sid = "ses_fresh"
+  const job = promptJob()
+  await writeState(dir, sid, { jobs: [job] })
+  activeRuns.set(sid, { jobId: job.id, job, startedAt: Date.now() })
+
+  await finalizeActiveRun(dir, stubClient, sid, { forceStale: true })
+  cleanupTimers(sid)
+
+  assert.equal(activeRuns.has(sid), true)
+  const state = await readState(dir, sid)
+  assert.equal(state.jobs[0].lastFinishedAt, undefined)
+  activeRuns.delete(sid)
+})
+
+test("forceStale finalizes stale active runs (B2)", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-finalize-"))
+  const sid = "ses_stale"
+  const job = promptJob({ id: "p2" })
+  await writeState(dir, sid, { jobs: [job] })
+  activeRuns.set(sid, { jobId: job.id, job, startedAt: Date.now() - 60_000 })
+
+  await finalizeActiveRun(dir, stubClient, sid, { forceStale: true })
+  cleanupTimers(sid)
+
+  assert.equal(activeRuns.has(sid), false)
+  const state = await readState(dir, sid)
   assert.ok(state.jobs[0].lastFinishedAt > 0)
 })
