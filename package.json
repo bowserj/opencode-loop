@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "check": "node --check src/index.js && node --check scripts/install-node.mjs && node --check scripts/loopd.mjs && npm test",
-    "test": "node --test test/*.test.js",
+    "test": "node --test",
     "install:global": "node scripts/install-node.mjs",
     "pack:zip": "node scripts/make-zip.mjs"
   },
