@@ -1686,4 +1686,5 @@ export default OpenCodeLoopPlugin
 // Exported for tests only (visibility, not public API).
 export {
   parseDuration, durationToText, parseCompactEvery, parseLoopArgs,
+  jobDueAt, dueJobs, nextDueDelay,
 }
