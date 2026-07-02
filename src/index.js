@@ -474,12 +474,18 @@ function rememberSession(directory, client, sessionID) {
   startHeartbeat()
 }
 
+function forgetSession(sessionID) {
+  knownSessions.delete(sessionID)
+  sessionStatuses.delete(sessionID)
+  sessionStatusSeenAt.delete(sessionID)
+}
+
 function startHeartbeat() {
   if (heartbeatTimer) return
   heartbeatTimer = setInterval(() => {
     for (const [sessionID, info] of [...knownSessions.entries()]) {
       if (!info || now() - (info.seenAt || 0) > 12 * 60 * 60 * 1000) {
-        knownSessions.delete(sessionID)
+        forgetSession(sessionID)
         continue
       }
       Promise.resolve()
@@ -1698,4 +1704,5 @@ export {
   readState, writeState, statePath,
   finalizeActiveRun, staleActiveRun, activeRuns, dueTimers, stopWatchdog,
   stopLoop,
+  forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
 }

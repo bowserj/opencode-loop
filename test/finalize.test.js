@@ -6,6 +6,7 @@ import path from "node:path"
 import {
   finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
+  forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
 } from "../src/index.js"
 
 const stubClient = {
@@ -114,4 +115,17 @@ test("stopLoop with a named target clears that job's active run (H2)", async () 
   assert.equal(activeRuns.has(sid), false)
   const state = await readState(dir, sid)
   assert.deepEqual(state.jobs.map((job) => job.id), ["b1"])
+})
+
+test("forgetSession clears all session tracking maps (H1)", () => {
+  const sid = "ses_forget"
+  knownSessions.set(sid, { seenAt: Date.now() })
+  sessionStatuses.set(sid, "idle")
+  sessionStatusSeenAt.set(sid, Date.now())
+
+  forgetSession(sid)
+
+  assert.equal(knownSessions.has(sid), false)
+  assert.equal(sessionStatuses.has(sid), false)
+  assert.equal(sessionStatusSeenAt.has(sid), false)
 })
