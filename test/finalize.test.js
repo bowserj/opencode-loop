@@ -7,6 +7,7 @@ import {
   finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
   forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
+  maybeRunDueJobs,
 } from "../src/loop.js"
 
 const stubClient = {
@@ -128,4 +129,27 @@ test("forgetSession clears all session tracking maps (H1)", () => {
   assert.equal(knownSessions.has(sid), false)
   assert.equal(sessionStatuses.has(sid), false)
   assert.equal(sessionStatusSeenAt.has(sid), false)
+})
+
+test("maybeRunDueJobs finalizes an aged active run instead of dropping it", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-aged-"))
+  const sid = "ses_aged"
+  // paused so no new run fires after the finalize; timeoutMs 1s makes the
+  // run older than its activeGuard but far below the 45s stale threshold
+  const job = promptJob({ id: "aged1", name: "aged", paused: true, timeoutMs: 1000 })
+  await writeState(dir, sid, { jobs: [job] })
+  activeRuns.set(sid, { jobId: job.id, job, startedAt: Date.now() - 5_000 })
+  sessionStatuses.set(sid, "idle")
+
+  await maybeRunDueJobs(dir, stubClient, sid)
+  cleanupTimers(sid)
+  // maybeRunDueJobs calls rememberSession, which starts the global 2.5s
+  // heartbeat interval; without forgetting the session here that interval
+  // has no way to self-clear (knownSessions never empties) and the test
+  // process hangs after this test completes.
+  forgetSession(sid)
+
+  assert.equal(activeRuns.has(sid), false)
+  const state = await readState(dir, sid)
+  assert.ok(state.jobs[0].lastFinishedAt > 0)
 })

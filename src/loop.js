@@ -1269,7 +1269,7 @@ async function maybeRunDueJobs(directory, client, sessionID, options = {}) {
       await reschedule(BUSY_RETRY_MS)
       return
     }
-    if (active && activeAge >= activeGuard) clearActiveRun(sessionID)
+    if (active && activeAge >= activeGuard) await finalizeActiveRun(directory, client, sessionID)
 
     const state = await readState(directory, sessionID)
     for (const candidate of state.jobs || []) {
@@ -1703,6 +1703,6 @@ export {
   dangerousShell, actionKind, decoratePrompt, sameLoopDefinition,
   readState, writeState, statePath,
   finalizeActiveRun, staleActiveRun, activeRuns, dueTimers, stopWatchdog,
-  stopLoop,
+  stopLoop, maybeRunDueJobs,
   forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
 }
