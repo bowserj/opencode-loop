@@ -6,8 +6,8 @@ OpenCode Loop adds a practical `/loop` command and `opencode-loopd` daemon to Op
 
 It is useful for long coding sessions, `progress.md` workflows, TODO automation, test-fix loops, periodic `/compact`, checkpoints, safe autonomous development, and background OpenCode continuation jobs.
 
-Repository: **ByBrawe/opencode-loop**  
-NPM package name: **@bybrawe/opencode-loop**
+Repository: **bowserj/opencode-loop**  
+NPM package name: **@bowserj/opencode-loop**
 
 ### Scheduler heartbeat note
 
@@ -154,7 +154,7 @@ OpenCode Loop is designed for developers searching for:
 For a clean reinstall or upgrade, use the latest published package:
 
 ```bash
-npx -y @bybrawe/opencode-loop@latest
+npx -y @bowserj/opencode-loop@latest
 ```
 
 Then fully restart OpenCode.
@@ -162,19 +162,19 @@ Then fully restart OpenCode.
 Install from npm with `npx`:
 
 ```bash
-npx -y @bybrawe/opencode-loop
+npx -y @bowserj/opencode-loop
 ```
 
 On Windows CMD:
 
 ```bat
-npx -y @bybrawe/opencode-loop
+npx -y @bowserj/opencode-loop
 ```
 
 On Windows PowerShell:
 
 ```powershell
-npx -y @bybrawe/opencode-loop
+npx -y @bowserj/opencode-loop
 ```
 
 The installer copies the plugin and slash command files into your OpenCode config directory.
@@ -224,18 +224,18 @@ If you want OpenCode to load the npm plugin package directly, add the scoped pac
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@bybrawe/opencode-loop"]
+  "plugin": ["@bowserj/opencode-loop"]
 }
 ```
 
 Use the scoped package name exactly as shown.
 
-`opencode-loop` without `@bybrawe/` is a different npm package name.
+`opencode-loop` without `@bowserj/` is a different npm package name.
 
 If `/loop` does not appear after using only the config method, run the installer once:
 
 ```bash
-npx -y @bybrawe/opencode-loop
+npx -y @bowserj/opencode-loop
 ```
 
 ### Install from GitHub
@@ -245,7 +245,7 @@ Use this if you want to install from source instead of npm.
 Windows PowerShell:
 
 ```powershell
-git clone https://github.com/ByBrawe/opencode-loop.git
+git clone https://github.com/bowserj/opencode-loop.git
 cd opencode-loop
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
@@ -253,7 +253,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 macOS / Linux / Git Bash:
 
 ```bash
-git clone https://github.com/ByBrawe/opencode-loop.git
+git clone https://github.com/bowserj/opencode-loop.git
 cd opencode-loop
 chmod +x ./scripts/install.sh
 ./scripts/install.sh
@@ -318,7 +318,7 @@ If the commands do not appear:
 1. Make sure OpenCode was fully restarted.
 2. Check that `opencode-loop.js` exists in the OpenCode plugin directory.
 3. Check that `loop.md`, `loop-help.md`, and the other command files exist in the OpenCode commands directory.
-4. Run `npx -y @bybrawe/opencode-loop` again to reinstall the command files.
+4. Run `npx -y @bowserj/opencode-loop` again to reinstall the command files.
 
 ## Quick start
 
