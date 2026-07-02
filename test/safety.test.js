@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { dangerousShell, actionKind, decoratePrompt, sameLoopDefinition } from "../src/index.js"
+import { dangerousShell, actionKind, decoratePrompt, sameLoopDefinition } from "../src/loop.js"
 
 test("dangerousShell flags destructive commands", () => {
   assert.equal(dangerousShell("rm -rf /tmp/x"), true)

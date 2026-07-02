@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { parseDuration, durationToText, parseCompactEvery, parseLoopArgs } from "../src/index.js"
+import { parseDuration, durationToText, parseCompactEvery, parseLoopArgs } from "../src/loop.js"
 
 test("parseDuration parses supported units", () => {
   assert.equal(parseDuration("500ms"), 500)

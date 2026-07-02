@@ -7,7 +7,7 @@ import {
   finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
   forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
-} from "../src/index.js"
+} from "../src/loop.js"
 
 const stubClient = {
   app: { log: async () => ({}) },

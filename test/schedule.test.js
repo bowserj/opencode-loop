@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { jobDueAt, dueJobs, nextDueDelay } from "../src/index.js"
+import { jobDueAt, dueJobs, nextDueDelay } from "../src/loop.js"
 
 function baseJob(overrides = {}) {
   return {
