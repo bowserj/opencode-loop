@@ -23,10 +23,15 @@ tests is safe.
 > treats EVERY export of the entry module as a plugin factory: non-function
 > exports throw "Plugin export is not a function" and function exports are
 > invoked with PluginInput, so the extra exports would have prevented the
-> plugin from loading at all. Revised decision (user-approved): the
-> implementation and its test-only export block live in `src/loop.js`;
-> `src/index.js` is a thin entry that exports only `OpenCodeLoopPlugin`
-> (named + default), and `test/entry.test.js` pins that loader contract.
+> plugin from loading at all. A thin-entry split (`src/loop.js` + re-export)
+> was tried first but breaks the copy-install path: the installers and
+> README copy `src/index.js` standalone into OpenCode's plugins directory,
+> and OpenCode auto-discovers `plugins/*.js`, so a companion file cannot
+> ride along. Final decision (user-approved): keep a single
+> `src/index.js` whose module exports are exactly `OpenCodeLoopPlugin`
+> (named + default); test visibility is provided via an
+> `OpenCodeLoopPlugin.internals` property. `test/entry.test.js` pins both
+> contracts (function-only exports; standalone copy imports cleanly).
 > Additionally, the user approved fixing a spec-level gap found in the same
 > review: `staleActiveRun` now extends its threshold to
 > `max(configured, timeoutMs + 30s)` when a job sets `--timeout`, so the
