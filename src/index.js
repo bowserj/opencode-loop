@@ -1687,4 +1687,5 @@ export default OpenCodeLoopPlugin
 export {
   parseDuration, durationToText, parseCompactEvery, parseLoopArgs,
   jobDueAt, dueJobs, nextDueDelay,
+  dangerousShell, actionKind, decoratePrompt, sameLoopDefinition,
 }
