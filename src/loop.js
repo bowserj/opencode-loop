@@ -12,6 +12,7 @@ const SESSION_STATUS_CACHE_MS = 1_500
 const MIN_DUE_TIMER_MS = 250
 const MAX_DUE_TIMER_MS = 2_147_000_000
 const HEARTBEAT_MS = 2_500
+const STALE_TIMEOUT_GRACE_MS = 30_000
 const MAX_SCAN_FILES = 200
 const MAX_SCAN_BYTES = 2_000_000
 const GOAL_REPORT_DIR = "goals"
@@ -809,7 +810,11 @@ function staleActiveRun(sessionID) {
   if (!active) return false
   const age = now() - (active.startedAt || 0)
   const configured = Number(active.job?.staleActiveRecoveryMs || active.job?.activeRecoveryMs || 0)
-  const threshold = Number.isFinite(configured) && configured > 0 ? configured : STALE_ACTIVE_RECOVERY_MS
+  let threshold = Number.isFinite(configured) && configured > 0 ? configured : STALE_ACTIVE_RECOVERY_MS
+  // An explicit --timeout owns aborting long turns; the stale sweep must not
+  // reap the run (and cancel that abort timer) before the timeout can fire.
+  const timeoutMs = Number(active.job?.timeoutMs || 0)
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) threshold = Math.max(threshold, timeoutMs + STALE_TIMEOUT_GRACE_MS)
   return age >= threshold
 }
 

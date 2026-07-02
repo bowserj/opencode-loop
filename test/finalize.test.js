@@ -7,7 +7,7 @@ import {
   finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
   forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
-  maybeRunDueJobs,
+  maybeRunDueJobs, staleActiveRun,
 } from "../src/loop.js"
 
 const stubClient = {
@@ -152,4 +152,16 @@ test("maybeRunDueJobs finalizes an aged active run instead of dropping it", asyn
   assert.equal(activeRuns.has(sid), false)
   const state = await readState(dir, sid)
   assert.ok(state.jobs[0].lastFinishedAt > 0)
+})
+
+test("staleActiveRun defers to an explicit --timeout before reaping", () => {
+  const sid = "ses_timeout"
+  const job = promptJob({ id: "t1", timeoutMs: 600_000 })
+  // 2 minutes old: past the 45s default threshold but well within timeout
+  activeRuns.set(sid, { jobId: job.id, job, startedAt: Date.now() - 120_000 })
+  assert.equal(staleActiveRun(sid), false)
+  // past timeout + 30s grace: now reapable
+  activeRuns.set(sid, { jobId: job.id, job, startedAt: Date.now() - 700_000 })
+  assert.equal(staleActiveRun(sid), true)
+  activeRuns.delete(sid)
 })
