@@ -1688,4 +1688,5 @@ export {
   parseDuration, durationToText, parseCompactEvery, parseLoopArgs,
   jobDueAt, dueJobs, nextDueDelay,
   dangerousShell, actionKind, decoratePrompt, sameLoopDefinition,
+  readState, writeState, statePath,
 }
