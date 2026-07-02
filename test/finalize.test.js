@@ -3,12 +3,13 @@ import assert from "node:assert/strict"
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import {
+import { OpenCodeLoopPlugin } from "../src/index.js"
+const {
   finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
   forgetSession, knownSessions, sessionStatuses, sessionStatusSeenAt,
   maybeRunDueJobs, staleActiveRun,
-} from "../src/loop.js"
+} = OpenCodeLoopPlugin.internals
 
 const stubClient = {
   app: { log: async () => ({}) },

@@ -3,7 +3,8 @@ import assert from "node:assert/strict"
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { readState, writeState, statePath } from "../src/loop.js"
+import { OpenCodeLoopPlugin } from "../src/index.js"
+const { readState, writeState, statePath } = OpenCodeLoopPlugin.internals
 
 test("writeState/readState round-trips jobs", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-state-"))

@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { parseDuration, durationToText, parseCompactEvery, parseLoopArgs } from "../src/loop.js"
+import { OpenCodeLoopPlugin } from "../src/index.js"
+const { parseDuration, durationToText, parseCompactEvery, parseLoopArgs } = OpenCodeLoopPlugin.internals
 
 test("parseDuration parses supported units", () => {
   assert.equal(parseDuration("500ms"), 500)

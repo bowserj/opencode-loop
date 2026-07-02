@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { dangerousShell, actionKind, decoratePrompt, sameLoopDefinition } from "../src/loop.js"
+import { OpenCodeLoopPlugin } from "../src/index.js"
+const { dangerousShell, actionKind, decoratePrompt, sameLoopDefinition } = OpenCodeLoopPlugin.internals
 
 test("dangerousShell flags destructive commands", () => {
   assert.equal(dangerousShell("rm -rf /tmp/x"), true)

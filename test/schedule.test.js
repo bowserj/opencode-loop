@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { jobDueAt, dueJobs, nextDueDelay } from "../src/loop.js"
+import { OpenCodeLoopPlugin } from "../src/index.js"
+const { jobDueAt, dueJobs, nextDueDelay } = OpenCodeLoopPlugin.internals
 
 function baseJob(overrides = {}) {
   return {
