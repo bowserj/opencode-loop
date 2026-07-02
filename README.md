@@ -1,5 +1,7 @@
 # OpenCode Loop
 
+> **Note:** This is a fork of [ByBrawe/opencode-loop](https://github.com/ByBrawe/opencode-loop). All credit for the original project goes to its author, [ByBrawe](https://github.com/ByBrawe). The original package is published on npm as [`@bybrawe/opencode-loop`](https://www.npmjs.com/package/@bybrawe/opencode-loop).
+
 **Claude Code style auto-continue for OpenCode.**
 
 OpenCode Loop adds a practical `/loop` command and `opencode-loopd` daemon to OpenCode so an agent can keep working after each idle turn instead of waiting for you to type “continue” again.
