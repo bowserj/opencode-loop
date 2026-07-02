@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import {
-  finalizeActiveRun, activeRuns, dueTimers, stopWatchdog,
+  finalizeActiveRun, stopLoop, activeRuns, dueTimers, stopWatchdog,
   readState, writeState,
 } from "../src/index.js"
 
@@ -98,4 +98,20 @@ test("forceStale finalizes stale active runs (B2)", async () => {
   assert.equal(activeRuns.has(sid), false)
   const state = await readState(dir, sid)
   assert.ok(state.jobs[0].lastFinishedAt > 0)
+})
+
+test("stopLoop with a named target clears that job's active run (H2)", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ocl-stop-"))
+  const sid = "ses_stop"
+  const alpha = promptJob({ id: "a1", name: "alpha" })
+  const beta = promptJob({ id: "b1", name: "beta" })
+  await writeState(dir, sid, { jobs: [alpha, beta] })
+  activeRuns.set(sid, { jobId: alpha.id, job: alpha, startedAt: Date.now() })
+
+  await stopLoop(dir, stubClient, sid, "alpha")
+  cleanupTimers(sid)
+
+  assert.equal(activeRuns.has(sid), false)
+  const state = await readState(dir, sid)
+  assert.deepEqual(state.jobs.map((job) => job.id), ["b1"])
 })

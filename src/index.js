@@ -1423,7 +1423,10 @@ async function stopLoop(directory, client, sessionID, args) {
   }
   const state = await readState(directory, sessionID)
   const before = state.jobs.length
-  state.jobs = state.jobs.filter((job, index) => !matchJob(job, target, index))
+  const removedIds = new Set(state.jobs.filter((job, index) => matchJob(job, target, index)).map((job) => job.id))
+  state.jobs = state.jobs.filter((job) => !removedIds.has(job.id))
+  const active = activeRuns.get(sessionID)
+  if (active && removedIds.has(active.jobId)) clearActiveRun(sessionID)
   await writeState(directory, sessionID, state)
   await scheduleDueWork(directory, client, sessionID)
   await toast(client, `Stopped ${before - state.jobs.length} loop(s).`, "success")
@@ -1694,4 +1697,5 @@ export {
   dangerousShell, actionKind, decoratePrompt, sameLoopDefinition,
   readState, writeState, statePath,
   finalizeActiveRun, staleActiveRun, activeRuns, dueTimers, stopWatchdog,
+  stopLoop,
 }
