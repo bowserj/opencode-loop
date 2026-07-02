@@ -18,6 +18,21 @@ directly; do not split the file into modules. `src/index.js` has no
 import-time side effects (timers only start on events), so importing it from
 tests is safe.
 
+> **Correction (final review, 2026-07-02):** Option A as written is not
+> viable. OpenCode's plugin loader (verified against opencode 1.17.13)
+> treats EVERY export of the entry module as a plugin factory: non-function
+> exports throw "Plugin export is not a function" and function exports are
+> invoked with PluginInput, so the extra exports would have prevented the
+> plugin from loading at all. Revised decision (user-approved): the
+> implementation and its test-only export block live in `src/loop.js`;
+> `src/index.js` is a thin entry that exports only `OpenCodeLoopPlugin`
+> (named + default), and `test/entry.test.js` pins that loader contract.
+> Additionally, the user approved fixing a spec-level gap found in the same
+> review: `staleActiveRun` now extends its threshold to
+> `max(configured, timeoutMs + 30s)` when a job sets `--timeout`, so the
+> heartbeat's stale sweep cannot reap a run (and cancel its abort timer)
+> before an explicit timeout longer than the stale threshold can fire.
+
 ## Confirmed bugs
 
 ### B1. Goal-mode finalize crashes (src/index.js:1143, 1185)
